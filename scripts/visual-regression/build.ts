@@ -119,9 +119,32 @@ async function downloadBaseSnapshots(ref: string, targetDir: string) {
   });
 }
 
+interface IFigurePicDesc {
+  src: string;
+  alt: string;
+  caption?: string;
+}
+
+function getFigurePic(desc: IFigurePicDesc) {
+  const { src, alt: identity, caption } = desc;
+  if (!caption) {
+    return `![${identity}](${src})`;
+  }
+  return `
+    <figure>
+      <img src="${src}" alt="${identity}">
+      <figcaption>${caption}</figcaption>
+    </figure>
+  `;
+}
+
 interface IBadCase {
   type: 'removed' | 'changed';
   filename: string;
+  /**
+   * compare target file
+   */
+  targetFilename?: string;
   /**
    * 0 - 1
    */
@@ -181,8 +204,8 @@ function generateReport(
 ${commonHeader}
 ${fullReport}
 
-| Image name | Expected | Actual | Diff |
-| --- | --- | --- | --- |
+| Expected (${targetBranch}) | Actual (Current PR) | Diff |
+| --- | --- | --- |
     `.trim();
 
   reportMdStr += '\n';
@@ -192,22 +215,32 @@ ${fullReport}
   let diffCount = 0;
 
   for (const badCase of badCases) {
-    const { filename, type } = badCase;
+    const { filename, type, targetFilename } = badCase;
     let lineReportMdStr = '';
     if (type === 'changed') {
       lineReportMdStr += '| ';
       lineReportMdStr += [
-        `\`${badCase.filename}\``,
-        `![${targetBranch}: ${targetRef}](${publicPath}/images/base/${filename})`,
-        `![current: pr-${prId}](${publicPath}/images/current/${filename})`,
+        getFigurePic({
+          src: `${publicPath}/images/base/${filename}`,
+          alt: `${targetBranch}: ${targetRef}`,
+          caption: targetFilename,
+        }),
+        getFigurePic({
+          src: `${publicPath}/images/current/${filename}`,
+          alt: `current: pr-${prId}`,
+          caption: filename,
+        }),
         `![diff](${publicPath}/images/diff/${filename})`,
       ].join(' | ');
       lineReportMdStr += ' |\n';
     } else if (type === 'removed') {
       lineReportMdStr += '| ';
       lineReportMdStr += [
-        `\`${badCase.filename}\``,
-        `![${targetBranch}: ${targetRef}](${publicPath}/images/base/${filename})`,
+        getFigurePic({
+          src: `${publicPath}/images/base/${filename}`,
+          alt: `${targetBranch}: ${targetRef}`,
+          caption: targetFilename,
+        }),
         `⛔️⛔️⛔️ Missing ⛔️⛔️⛔️`,
         `🚨🚨🚨 Removed 🚨🚨🚨`,
       ].join(' | ');
@@ -324,6 +357,7 @@ async function boot() {
         badCases.push({
           type: 'changed',
           filename: compareImgName,
+          targetFilename: baseImgName,
           weight: mismatchedPxPercent,
         });
       } else {
